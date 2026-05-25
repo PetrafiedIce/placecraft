@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Placecraft</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <main class="stage" id="stage">
+    <canvas id="view" tabindex="0"></canvas>
+    <div id="three-host" class="three-host" hidden></div>
+
+    <div class="hud-top-left">
+      <span id="zoom-hud" class="hud-pill">100%</span>
+      <span id="coord" class="hud-pill">—</span>
+    </div>
+
+    <div class="hud-top-right">
+      <button id="mode-toggle" class="hud-btn" title="Switch to 3D preview">
+        <span class="hud-btn-icon">◫</span>
+        <span class="hud-btn-label" id="mode-toggle-label">3D</span>
+      </button>
+      <a href="/export.png" download="placecraft.png" class="hud-btn" title="Download as PNG">
+        <span class="hud-btn-icon">↓</span>
+        <span class="hud-btn-label">PNG</span>
+      </a>
+      <a href="/export.litematic" download="placecraft.litematic" class="hud-btn hud-btn--primary" title="Download as Litematica schematic">
+        <span class="hud-btn-icon">↓</span>
+        <span class="hud-btn-label">.litematic</span>
+      </a>
+    </div>
+
+    <div id="conn-toast" class="conn-toast" hidden>Connecting…</div>
+
+    <div class="hud-help">
+      <kbd>Click</kbd> place
+      <span class="dot">•</span>
+      <kbd>Wheel</kbd> zoom
+      <span class="dot">•</span>
+      <kbd>Right-drag</kbd> pan
+      <span class="dot">•</span>
+      <kbd>F</kbd> fit
+    </div>
+
+    <button id="picker-btn" class="picker-trigger" aria-label="Choose block">
+      <span id="picker-trigger-swatch" class="picker-trigger-swatch"></span>
+      <span class="picker-trigger-text">
+        <span id="picker-trigger-name" class="picker-trigger-name">—</span>
+        <span class="picker-trigger-hint">change block</span>
+      </span>
+    </button>
+  </main>
+
+  <div class="picker-overlay" id="picker-overlay" hidden>
+    <div class="picker-panel" id="picker-panel" role="dialog" aria-label="Block picker">
+      <div class="picker-header">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+          <input type="search" id="picker-search" placeholder="Search 969 blocks…" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="picker-close" id="picker-close" aria-label="Close">×</button>
+      </div>
+      <div class="picker-body" id="picker-body"></div>
+      <div class="picker-empty" id="picker-empty" hidden>No blocks match.</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
