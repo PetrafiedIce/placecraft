@@ -55,6 +55,8 @@ const HARD_SKIP = new Set([
   "jigsaw",
   // Banner pattern items not placeable
   // (banners themselves are kept)
+  // Removed by user request
+  "netherite_block",
 ]);
 
 // Block id → texture file name override. Used when the default heuristic doesn't pick the right face.

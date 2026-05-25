@@ -15,6 +15,7 @@ const PORT          = parseInt(process.env.PORT || "3000", 10);
 const WIDTH         = parseInt(process.env.CANVAS_WIDTH || "128", 10);
 const HEIGHT        = parseInt(process.env.CANVAS_HEIGHT || "128", 10);
 const COOLDOWN_MS   = parseInt(process.env.COOLDOWN_MS || "30000", 10);
+const MAX_PER_BLOCK = parseInt(process.env.MAX_PER_BLOCK || "3", 10);
 const ADMIN_SECRET  = process.env.ADMIN_SECRET || "";
 const DATA_DIR      = path.join(__dirname, "data");
 const CANVAS_FILE   = path.join(DATA_DIR, "canvas.bin");
@@ -30,31 +31,54 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 let canvas = new Uint16Array(WIDTH * HEIGHT);
 let dirty = false;
 
+// Palette fingerprint — hash of all block IDs in order. Any change here (removed
+// block, reordered list, new MC version with extra blocks) shifts existing palette
+// indices, so we refuse to load a canvas that was saved against a different palette.
+const PALETTE_FINGERPRINT = (() => {
+  let h = 2166136261 >>> 0;
+  for (const b of BLOCKS) {
+    for (let i = 0; i < b.id.length; i++) {
+      h = Math.imul(h ^ b.id.charCodeAt(i), 16777619) >>> 0;
+    }
+    h = Math.imul(h ^ 0x7c, 16777619) >>> 0; // separator
+  }
+  return h >>> 0;
+})();
+const FINGERPRINT_FILE = path.join(DATA_DIR, "palette.fingerprint");
+
 function canvasBuffer() {
   return Buffer.from(canvas.buffer, canvas.byteOffset, canvas.byteLength);
 }
 
 (function loadCanvas() {
   try {
+    let savedFp = null;
+    try { savedFp = fs.readFileSync(FINGERPRINT_FILE, "utf8").trim(); } catch (_) {}
+    if (savedFp !== null && savedFp !== String(PALETTE_FINGERPRINT)) {
+      console.warn(
+        `Palette fingerprint changed (saved=${savedFp}, current=${PALETTE_FINGERPRINT}). ` +
+        `Discarding canvas to avoid misrendering with shifted indices.`
+      );
+      try { fs.unlinkSync(CANVAS_FILE); } catch (_) {}
+    }
     const buf = fs.readFileSync(CANVAS_FILE);
     const expected = WIDTH * HEIGHT * 2;
     if (buf.length === expected) {
-      // Copy bytes into a fresh Uint16Array so the underlying ArrayBuffer is properly aligned.
       const copy = Buffer.alloc(expected);
       buf.copy(copy);
       canvas = new Uint16Array(copy.buffer, copy.byteOffset, WIDTH * HEIGHT);
       console.log(`Loaded canvas from ${CANVAS_FILE}`);
     } else {
       console.warn(
-        `Canvas file size ${buf.length} != expected ${expected}; starting blank. ` +
-        `(Change CANVAS_WIDTH/CANVAS_HEIGHT to match, or delete the file. The format changed when ` +
-        `we added texture support: old 1-byte saves are no longer compatible.)`
+        `Canvas file size ${buf.length} != expected ${expected}; starting blank.`
       );
     }
   } catch (e) {
     if (e.code !== "ENOENT") console.warn("Could not read canvas file:", e.message);
     console.log("Starting with a blank canvas.");
   }
+  // Always write the current fingerprint so the next start can compare.
+  try { fs.writeFileSync(FINGERPRINT_FILE, String(PALETTE_FINGERPRINT)); } catch (_) {}
 })();
 
 setInterval(() => {
@@ -64,6 +88,16 @@ setInterval(() => {
     if (err) console.error("Failed to save canvas:", err);
   });
 }, SAVE_INTERVAL_MS);
+
+// Per-block placement counts (palette index → number currently on canvas).
+// Index 0 (air) is unbounded — erasing is always free. Everything else is capped
+// at MAX_PER_BLOCK to keep one block from dominating the canvas.
+const blockCounts = new Uint32Array(BLOCKS.length);
+function recountFromCanvas() {
+  blockCounts.fill(0);
+  for (let i = 0; i < canvas.length; i++) blockCounts[canvas[i]]++;
+}
+recountFromCanvas();
 
 // Last-place timestamps by IP for cooldown enforcement.
 const lastPlace = new Map();
@@ -111,6 +145,7 @@ app.get("/api/info", (req, res) => {
     height: HEIGHT,
     cooldownMs: COOLDOWN_MS,
     paletteSize: BLOCKS.length,
+    maxPerBlock: MAX_PER_BLOCK,
   });
 });
 
@@ -170,6 +205,7 @@ app.post("/api/admin/clear", express.json(), (req, res) => {
   const provided = req.headers["x-admin-secret"] || req.body?.secret;
   if (provided !== ADMIN_SECRET) return res.status(403).send("Bad secret.");
   canvas.fill(0);
+  recountFromCanvas();
   dirty = true;
   io.emit("clear");
   res.json({ ok: true });
@@ -189,6 +225,7 @@ io.on("connection", (socket) => {
     height: HEIGHT,
     cooldownMs: COOLDOWN_MS,
     paletteSize: BLOCKS.length,
+    maxPerBlock: MAX_PER_BLOCK,
     remainingCooldown: cooldownRemaining(ip),
     snapshot: canvasBuffer(),
   });
@@ -218,14 +255,31 @@ io.on("connection", (socket) => {
     }
 
     const idx = y * WIDTH + x;
-    if (canvas[idx] === blockIndex) {
+    const prev = canvas[idx];
+
+    if (prev === blockIndex) {
       // No-op placement still costs a cooldown to prevent rapid spam-clicking probes.
       lastPlace.set(ip, Date.now());
       ack?.({ ok: true, cooldownMs: COOLDOWN_MS, noop: true });
       return;
     }
 
+    // Max-per-block rule. Air (index 0) is exempt — erasing is always allowed.
+    // Replacing an existing block of THIS type with itself was already handled above,
+    // so we only need to compare against the cap for non-air new blocks.
+    if (blockIndex !== 0 && blockCounts[blockIndex] >= MAX_PER_BLOCK) {
+      ack?.({
+        ok: false,
+        reason: "block_limit",
+        max: MAX_PER_BLOCK,
+        current: blockCounts[blockIndex],
+      });
+      return;
+    }
+
     canvas[idx] = blockIndex;
+    blockCounts[prev]--;
+    blockCounts[blockIndex]++;
     dirty = true;
     lastPlace.set(ip, Date.now());
 

@@ -515,6 +515,8 @@
         if (ack && ack.reason === "cooldown" && typeof ack.remaining === "number") {
           setCooldown(ack.remaining);
           spawnFloater(clientX, clientY, `wait ${Math.ceil(ack.remaining / 1000)}s`, "bad");
+        } else if (ack && ack.reason === "block_limit") {
+          spawnFloater(clientX, clientY, `max ${ack.max || 3}`, "bad");
         } else {
           spawnFloater(clientX, clientY, "blocked", "bad");
         }

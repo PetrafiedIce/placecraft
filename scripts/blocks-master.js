@@ -188,7 +188,7 @@ const ALL_BLOCKS = [
   b("emerald_block",            "emerald_block",            null, "Resource"),
   b("lapis_block",              "lapis_block",              null, "Resource"),
   b("redstone_block",           "redstone_block",           null, "Resource"),
-  b("netherite_block",          "netherite_block",          null, "Resource"),
+  // netherite_block intentionally removed by user request.
 
   // ---- Copper (4 oxidation × variants, skipping doors/trapdoors/bulbs) ----
   b("copper_block",             "copper_block",             null, "Copper"),
