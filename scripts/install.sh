@@ -123,9 +123,18 @@ $DOMAIN {
 }
 EOF
   systemctl restart caddy
+
+  # Open 80/443 (for Caddy + Let's Encrypt) and CLOSE the bare app port —
+  # external traffic only goes through Caddy now.
+  if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    log "Configuring ufw: allow 80, 443; deny $PORT"
+    ufw allow 80/tcp  >/dev/null || true
+    ufw allow 443/tcp >/dev/null || true
+    ufw delete allow "$PORT/tcp" >/dev/null 2>&1 || true
+  fi
   PUBLIC_URL="https://$DOMAIN"
 else
-  # No domain → expose port via UFW if firewall is active
+  # No domain → expose the app port directly via UFW if firewall is active
   if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     log "Opening port $PORT in ufw"
     ufw allow "$PORT/tcp" >/dev/null || true
